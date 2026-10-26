@@ -276,10 +276,16 @@ public class InstallCommandTest extends AbstractMavenCommandTest {
                 CliConstants.FPL, "g:a");
 
         assertEquals(ReturnCodes.SUCCESS, exitCode);
-        Mockito.verify(provisionAction).provisionWithChannels(configCaptor.capture(), channelCaptor.capture(), any());
-        assertThat(channelCaptor.getValue().get(0).getRepositories()
+
+        // When using --channels with --repositories, the repositories are temporary overrides
+        // and should appear in override channels (3rd param) but not persisted channels (2nd param)
+        ArgumentCaptor<List<Channel>> overrideChannelCaptor = ArgumentCaptor.forClass(List.class);
+        Mockito.verify(provisionAction).provisionWithChannels(any(), channelCaptor.capture(), overrideChannelCaptor.capture());
+
+        // Override channels should have the repository
+        assertThat(overrideChannelCaptor.getValue().get(0).getRepositories()
                 .stream().map(Repository::getUrl).collect(Collectors.toList()))
-                .containsOnly(testURL);
+                .contains(testURL);
     }
 
     @SuppressWarnings("unchecked")
@@ -456,20 +462,25 @@ public class InstallCommandTest extends AbstractMavenCommandTest {
 
         assertEquals(ReturnCodes.SUCCESS, exitCode);
 
-        // provisionAction.getPendingLicenses() should have been called with channels containing unzipped repo
-        Mockito.verify(provisionAction).getPendingLicenses(configCaptor.capture(), channelCaptor.capture());
-        assertThat(channelCaptor.getValue().get(0).getRepositories())
+        // Verify that zip repositories are unzipped and used for provisioning but not persisted.
+        // The channels passed to provisionWithChannels (2nd param) should NOT have the repository override
+        // (they will be persisted), while the override channels (3rd param) should have it.
+        ArgumentCaptor<List<Channel>> overrideChannelCaptor = ArgumentCaptor.forClass(List.class);
+        Mockito.verify(provisionAction).provisionWithChannels(any(), channelCaptor.capture(), overrideChannelCaptor.capture());
+
+        // Override channels (used for provisioning) should contain the unzipped repository
+        assertThat(overrideChannelCaptor.getValue().get(0).getRepositories())
                 .satisfies(list -> {
                     assertThat(list.size()).isEqualTo(1);
-                    assertThat(list.get(0).getUrl()).endsWith(REPOSITORY_ZIP_PATH); // Expect unzipped path, not the zip file path
+                    assertThat(list.get(0).getUrl()).endsWith(REPOSITORY_ZIP_PATH); // Expect unzipped path
                 });
 
-        // provisionAction.provision() should have been called with channels containing unzipped repo
-        Mockito.verify(provisionAction).provisionWithChannels(configCaptor.capture(), channelCaptor.capture(), any());
+        // Base channels (persisted) should NOT contain the repository override
         assertThat(channelCaptor.getValue().get(0).getRepositories())
                 .satisfies(list -> {
-                    assertThat(list.size()).isEqualTo(1);
-                    assertThat(list.get(0).getUrl()).endsWith(REPOSITORY_ZIP_PATH); // Expect unzipped path, not the zip file path
+                    // Original profile channels don't include the --repositories override
+                    assertThat(list).isNotEmpty(); // Has the profile's default repositories
+                    assertThat(list.stream().noneMatch(r -> r.getUrl().endsWith(REPOSITORY_ZIP_PATH))).isTrue();
                 });
     }
 

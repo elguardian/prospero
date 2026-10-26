@@ -208,8 +208,17 @@ public class InstallCommand extends AbstractInstallCommand {
             final MavenOptions mavenOptions = getMavenOptions();
             final GalleonProvisioningConfig provisioningConfig = provisioningDefinition.toProvisioningConfig();
             final List<Channel> channels = ChannelUtils.resolveChannels(provisioningDefinition, mavenOptions);
+            final List<Repository> allRepositoryOverrides = new ArrayList<>();
+
             List<Repository> repositories = RepositoryDefinition.from(this.shadowRepositories);
             final List<Repository> shadowRepositories = RepositoryUtils.unzipArchives(repositories, temporaryFiles);
+
+            allRepositoryOverrides.addAll(shadowRepositories);
+
+            // this allow to unzip the --repositories
+            List<Repository> remotes = RepositoryDefinition.from(getRemoteRepositories());
+            final List<Repository> remoteRepositories = RepositoryUtils.unzipArchives(remotes, temporaryFiles);
+            allRepositoryOverrides.addAll(remoteRepositories);
 
             final ProvisioningAction provisioningAction = actionFactory.install(directory.toAbsolutePath(), mavenOptions,
                     console);
@@ -223,7 +232,7 @@ public class InstallCommand extends AbstractInstallCommand {
             }
 
 
-            final List<Channel> effectiveChannels = TemporaryRepositoriesHandler.overrideRepositories(channels, shadowRepositories);
+            final List<Channel> effectiveChannels = TemporaryRepositoriesHandler.overrideRepositories(channels, allRepositoryOverrides);
             console.println(CliMessages.MESSAGES.usingChannels());
             final ChannelPrinter channelPrinter = new ChannelPrinter(console);
             for (Channel channel : effectiveChannels) {
@@ -247,7 +256,7 @@ public class InstallCommand extends AbstractInstallCommand {
                 }
             }
 
-            final List<Channel> overrideChannels = buildOverrideChannels(shadowRepositories, channels);
+            final List<Channel> overrideChannels = buildOverrideChannels(allRepositoryOverrides, channels);
 
             provisioningAction.provisionWithChannels(provisioningConfig, channels, overrideChannels);
 

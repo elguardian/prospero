@@ -103,14 +103,44 @@ public abstract class AbstractInstallCommand extends AbstractCommand {
 
     protected ProvisioningDefinition.Builder buildDefinition(TemporaryFilesManager temporaryFiles)
             throws ArgumentParsingException, InvalidRepositoryArchiveException {
-        final List<Repository> repositories = RepositoryUtils.unzipArchives(
-                RepositoryDefinition.from(remoteRepositories), temporaryFiles);
-        return ProvisioningDefinition.builder()
-                .setFpl(featurePackOrDefinition.fpl.orElse(null))
-                .setProfile(featurePackOrDefinition.profile.orElse(null))
-                .setManifests(manifestCoordinates)
-                .setChannelCoordinates(channelCoordinates)
-                .setOverrideRepositories(repositories)
-                .setDefinitionFile(featurePackOrDefinition.definition.map(Path::toUri).orElse(null));
+        // When using --channel-manifest, repositories ARE part of the channel definition and must be persisted.
+        // For --profile or --channels, repositories should be temporary overrides handled separately.
+        final boolean usingManifests = !manifestCoordinates.isEmpty();
+
+        if (usingManifests && !remoteRepositories.isEmpty()) {
+            // For manifests, repositories define the channels, so they must be included
+            final List<Repository> repositories = RepositoryUtils.unzipArchives(
+                    RepositoryDefinition.from(remoteRepositories), temporaryFiles);
+            return ProvisioningDefinition.builder()
+                    .setFpl(featurePackOrDefinition.fpl.orElse(null))
+                    .setProfile(featurePackOrDefinition.profile.orElse(null))
+                    .setManifests(manifestCoordinates)
+                    .setChannelCoordinates(channelCoordinates)
+                    .setOverrideRepositories(repositories)
+                    .setDefinitionFile(featurePackOrDefinition.definition.map(Path::toUri).orElse(null));
+        } else {
+            // For profiles/channels, repositories are handled as temporary overrides in InstallCommand
+            return ProvisioningDefinition.builder()
+                    .setFpl(featurePackOrDefinition.fpl.orElse(null))
+                    .setProfile(featurePackOrDefinition.profile.orElse(null))
+                    .setManifests(manifestCoordinates)
+                    .setChannelCoordinates(channelCoordinates)
+                    .setDefinitionFile(featurePackOrDefinition.definition.map(Path::toUri).orElse(null));
+        }
+    }
+
+    /**
+     * Returns the list of remote repositories to use as temporary overrides during installation.
+     * These repositories will not be persisted in the installation metadata (except when using --channel-manifest).
+     */
+    protected List<String> getRemoteRepositories() {
+        return remoteRepositories;
+    }
+
+    /**
+     * Returns true if using --channel-manifest (which requires repositories to be part of the channel definition).
+     */
+    protected boolean isUsingManifests() {
+        return !manifestCoordinates.isEmpty();
     }
 }
